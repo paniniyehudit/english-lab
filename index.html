@@ -47,6 +47,8 @@ p{margin:0}
 .muted{color:var(--muted)}.small{font-size:.85em}
 .en{font-family:var(--font-en);direction:ltr;unicode-bidi:isolate;letter-spacing:.07em;display:inline-block}
 .en .syl+.syl::before{content:"·";color:var(--muted);margin:0 .12em;font-weight:400}
+.en2{display:inline-flex;flex-direction:column;align-items:center;gap:0;line-height:1.35}
+.en.whole{font-size:.5em;color:var(--muted);letter-spacing:.09em;font-weight:400}
 .en.vow .v{color:var(--vowel)}
 .stack{display:flex;flex-direction:column;gap:14px}
 .row{display:flex;gap:10px;align-items:center}.wrap{flex-wrap:wrap}.grow{flex:1;min-width:0}
@@ -183,6 +185,7 @@ function enEl(w,cls){
     for(const ch of s){y.append(/[aeiouAEIOU]/.test(ch)?h('span',{class:'v'},ch):document.createTextNode(ch))}
     sp.append(y);
   });
+  if(txt.includes('·'))return h('span',{class:'en2'},sp,h('span',{class:'en whole'},txt.replace(/·/g,'')));
   return sp;
 }
 
