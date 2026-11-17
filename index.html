@@ -198,9 +198,12 @@ function speak(t,slow){
     if(!('speechSynthesis' in window)){toast('אין הקראה במכשיר הזה');return}
     speechSynthesis.cancel();
     const u=new SpeechSynthesisUtterance(t);u.lang='en-US';if(voice)u.voice=voice;
-    u.rate=slow?0.45:S.set.rate;speechSynthesis.speak(u);
+    u.rate=slow==='vslow'?0.25:slow?0.45:S.set.rate;speechSynthesis.speak(u);
   }catch(e){}
 }
+let lastTurtle=0;
+/* turtle: one tap = slow, a second tap within 2 seconds = very slow */
+function turtle(t){const n=Date.now(),v=n-lastTurtle<2000;lastTurtle=v?0:n;speak(t,v?'vslow':true)}
 let AC=null;
 function beep(ok){
   if(!S.set.sound)return;
@@ -213,7 +216,7 @@ function beep(ok){
 }
 const speakBtns=w=>[
   h('button',{class:'icon-btn','aria-label':'השמע',onclick:()=>speak(plain(w.en))},'🔊'),
-  h('button',{class:'icon-btn','aria-label':'השמע לאט',onclick:()=>speak(plain(w.en),true)},'🐢')
+  h('button',{class:'icon-btn','aria-label':'השמע לאט',onclick:()=>turtle(plain(w.en))},'🐢')
 ];
 
 /* ===================== progress / spaced repetition ===================== */
@@ -401,7 +404,7 @@ function rLearn(w){
     w.mn?h('div',{class:'assoc'},h('span',{class:'lbl'},'💡 אסוציאציה לזכירה'),w.mn):null,
     S.my[w.id]?h('div',{class:'assoc mine'},h('span',{class:'lbl'},'⭐ האסוציאציה שלי'),S.my[w.id]):null,
     w.ex?h('div',{class:'card stack',style:'gap:4px'},h('div',{class:'row'},h('div',{class:'grow'},h('div',{style:'font-size:1.1em'},enEl(w.ex)),h('div',{class:'muted small'},w.exhe||'')),
-      h('button',{class:'icon-btn','aria-label':'השמע משפט',onclick:()=>speak(w.ex)},'🔊'))):null,
+      h('button',{class:'icon-btn','aria-label':'השמע משפט',onclick:()=>speak(w.ex)},'🔊'),h('button',{class:'icon-btn','aria-label':'משפט לאט',onclick:()=>turtle(w.ex)},'🐢'))):null,
     edit,myArea,
     h('button',{class:'btn primary full',onclick:()=>adv(w,1)},'הבנתי, הבא'));
 }
@@ -496,7 +499,7 @@ function rListen(w){
   o.host.append(h('div',{class:'card stack center'},h('div',{class:'muted small'},'מה שמעת? בחר את המשמעות'),
     h('div',{class:'row',style:'justify-content:center'},
       h('button',{class:'icon-btn',style:'width:84px;height:84px;font-size:2.2em','aria-label':'השמע',onclick:()=>speak(plain(w.en))},'🔊'),
-      h('button',{class:'icon-btn','aria-label':'לאט',onclick:()=>speak(plain(w.en),true)},'🐢'))),
+      h('button',{class:'icon-btn','aria-label':'לאט',onclick:()=>turtle(plain(w.en))},'🐢'))),
     o.optBox,o.hintBox,o.hintArea,o.skipBtn,o.fbBox);
   return o.host;
 }
@@ -688,7 +691,7 @@ function openDetail(w){
     p&&p.seen?h('div',{class:'card small center'},`נראתה ${p.seen} פעמים · נכון ${p.ok} · טעות ${p.bad} · הצלחה אחרונה ${Math.round((r||0)*100)}%`):null,
     w.mn?h('div',{class:'assoc'},h('span',{class:'lbl'},'💡 אסוציאציה'),w.mn):null,
     assocBox({id:w.id,mn:''},true),
-    w.ex?h('div',{class:'card row'},h('div',{class:'grow'},h('div',null,enEl(w.ex)),h('div',{class:'muted small'},w.exhe||'')),h('button',{class:'icon-btn',onclick:()=>speak(w.ex)},'🔊')):null,
+    w.ex?h('div',{class:'card row'},h('div',{class:'grow'},h('div',null,enEl(w.ex)),h('div',{class:'muted small'},w.exhe||'')),h('button',{class:'icon-btn',onclick:()=>speak(w.ex)},'🔊'),h('button',{class:'icon-btn',onclick:()=>turtle(w.ex)},'🐢')):null,
     w.id[0]==='c'&&S.custom.includes(w)?h('button',{class:'btn bad full',onclick:e=>{if(!delArmed){delArmed=true;e.currentTarget.textContent='לחץ שוב למחיקה';return}
       S.custom=S.custom.filter(x=>x!==w);delete S.p[w.id];save();bg.remove();go(cur)}},'מחק מילה'):null);
   bg.append(sheet);document.body.append(bg);
@@ -862,7 +865,7 @@ function rSnip(s){
     h('button',{class:'btn ghost full',onclick:()=>finish(true)},'🤷 לא יודע, דלג'));
   host.append(h('div',{class:'card stack'},
     h('div',{class:'row'},h('div',{class:'muted small grow'},'הקשב וקרא, ואז כתוב את הפירוש בעברית'),
-      h('button',{class:'icon-btn','aria-label':'השמע',onclick:()=>speak(s.en)},'🔊'),h('button',{class:'icon-btn','aria-label':'לאט',onclick:()=>speak(s.en,true)},'🐢')),
+      h('button',{class:'icon-btn','aria-label':'השמע',onclick:()=>speak(s.en)},'🔊'),h('button',{class:'icon-btn','aria-label':'לאט',onclick:()=>turtle(s.en)},'🐢')),
     paraEl(s.en,s.unit)),area,hintBox,fbBox);
   setTimeout(()=>speak(s.en),300);
   return host;
@@ -943,8 +946,8 @@ function vReader(){
   UNIT.sections.forEach(s=>{
     box.append(h('div',{class:'card stack'},
       h('div',{class:'row'},h('h3',{class:'en grow',style:'letter-spacing:.04em'},s[0]),
-        h('button',{class:'icon-btn','aria-label':'קרא',onclick:()=>speak(s[1].replace(/\n+/g,' '))},'🔊'),
-        h('button',{class:'icon-btn','aria-label':'קרא לאט',onclick:()=>speak(s[1].replace(/\n+/g,' '),true)},'🐢')),
+        h('button',{class:'icon-btn','aria-label':'קרא',onclick:()=>turtle(s[1].replace(/\n+/g,' '))},'🔊'),
+        h('button',{class:'icon-btn','aria-label':'קרא לאט',onclick:()=>turtle(s[1].replace(/\n+/g,' '))},'🐢')),
       s[1].split('\n\n').map(para)));
   });
   app.replaceChildren(h('div',{class:'stack'},
