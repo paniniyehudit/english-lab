@@ -264,14 +264,14 @@ let cur='home',sess=null;
 const TABS=[['home','🏠','בית'],['units','📚','קורס'],['progress','📈','התקדמות'],['words','📝','מילים'],['settings','⚙️','הגדרות']];
 function buildTabs(){
   const box=tabbar.firstElementChild;box.replaceChildren();
-  TABS.forEach(t=>box.append(h('button',{class:'tab'+(cur===t[0]?' on':''),onclick:()=>go(t[0])},h('span',{class:'ic'},t[1]),t[2])));
+  TABS.forEach(t=>box.append(h('button',{class:'tab'+((cur===t[0]||(t[0]==='units'&&(cur==='unit'||cur==='reader')))?' on':''),onclick:()=>go(t[0])},h('span',{class:'ic'},t[1]),t[2])));
 }
 function go(v){
   try{speechSynthesis.cancel()}catch(e){}
   cur=v;window.scrollTo(0,0);
   tabbar.style.display=(v==='session'||v==='match'||v==='result'||v==='quiz')?'none':'flex';
   buildTabs();
-  ({home:vHome,units:vUnits,reader:vReader,quiz:vQuiz,progress:vProgress,words:vWords,settings:vSettings,session:vSession,match:vMatch,result:vResult}[v])();
+  ({home:vHome,units:vUnits,unit:vUnit,reader:vReader,quiz:vQuiz,progress:vProgress,words:vWords,settings:vSettings,session:vSession,match:vMatch,result:vResult}[v])();
 }
 
 /* ===================== home ===================== */
@@ -286,14 +286,14 @@ function vHome(){
   const ws=allWords();const stats={new:0,learning:0,weak:0,mastered:0};ws.forEach(w=>stats[status(w)]++);
   const today=S.days[dkey()]||0;
   const weak=ws.filter(w=>status(w)==='weak').sort((a,b)=>recent(S.p[a.id])-recent(S.p[b.id])).slice(0,8);
-  const modes=[['learn','👀','לימוד','תמונה, צליל ואסוציאציה'],['card','🃏','כרטיסיות','הפוך ובדוק, עם רמז'],['listen','👂','האזנה','שומעים ובוחרים'],['spell','✍️','כתיבה','בונים את המילה אות אחר אות'],['pick','🎯','בחירה','בוחרים את התרגום'],['match','🧩','התאמה','מחברים זוגות']];
+  const modes=[['learn','👀','לימוד','תמונה, צליל ואסוציאציה'],['card','🃏','כרטיסיות','הפוך ובדוק, עם רמז'],['listen','👂','האזנה','שומעים ובוחרים'],['spell','✍️','כתיבה','בונים את המילה באנגלית'],['typeHe','🔤','תרגום לעברית','רואים אנגלית, כותבים עברית'],['pick','🎯','בחירה','בוחרים את התרגום'],['match','🧩','התאמה','מחברים זוגות'],['snips','🎧','קטעי קריאה','הקשב וכתוב פירוש'],['review','🔁','חזרה כללית','כל היחידות מעורבבות']];
   app.replaceChildren(h('div',{class:'stack'},
     h('div',{class:'row'},h('div',{class:'grow'},h('h1',null,'English Lab'),h('p',{class:'muted small'},streak()?`🔥 ${streak()} ימים ברצף`:'מתחילים רצף חדש היום')),
       h('div',{style:'color:var(--accent)'},ring(today,S.set.goal))),
     h('button',{class:'hero',onclick:()=>startSession('smart')},h('span',{style:'font-size:2.2em'},'🚀'),
       h('div',{class:'grow'},h('b',null,'אימון חכם'),h('span',{class:'small'},stats.weak?`${stats.weak} מילים צריכות חיזוק – יופיעו יותר`:'ממשיכים בקצב שלך')))
     ,
-    h('div',{class:'grid2'},modes.map(m=>h('button',{class:'mode',onclick:()=>m[0]==='match'?startMatch():startSession(m[0])},h('span',{class:'ic'},m[1]),h('b',null,m[2]),h('span',null,m[3])))),
+    h('div',{class:'grid2'},modes.map(m=>h('button',{class:'mode',style:m[0]==='review'?'grid-column:1/-1;background:var(--accent-soft)':null,onclick:()=>m[0]==='match'?startMatch():startSession(m[0])},h('span',{class:'ic'},m[1]),h('b',null,m[2]),h('span',null,m[3])))),
     weak.length?h('div',{class:'card stack'},h('h3',null,'מילים שדורשות פוקוס'),
       h('div',{class:'row wrap'},weak.map(w=>h('button',{class:'chip',onclick:()=>openDetail(w)},w.emo,' ',enEl(w))))):
       h('div',{class:'card muted small center'},'אין עדיין מילים שמסתבכות. ככל שתתרגל, המילים הקשות יקבלו כאן פוקוס.'),
@@ -309,9 +309,12 @@ function barStats(st,total){
 /* ===================== session engine ===================== */
 function startSession(mode,ids){
   let items=[];
-  if(ids){
+  if(mode==='snips')return startSnips(ids);
+  if(mode==='review')return startReview();
+  if(mode==='learn'&&ids){ids.forEach(id=>items.push({id,type:'learn'}))}
+  else if(ids){
     const lr=[],rs=[];
-    ids.forEach(id=>{const p=S.p[id];if(!p||!p.seen)lr.push({id,type:'learn'});rs.push({id,type:shuffle(['card','pick','listen','spell'])[0]})});
+    ids.forEach(id=>{const p=S.p[id];if(!p||!p.seen)lr.push({id,type:'learn'});rs.push({id,type:shuffle(['card','pick','listen','spell','typeHe'])[0]})});
     items=lr.concat(shuffle(rs));
   }
   else if(mode==='learn'){pickWords(6,6).forEach(w=>items.push({id:w.id,type:'learn'}))}
@@ -319,7 +322,7 @@ function startSession(mode,ids){
     const learn=[],rest=[];
     pickWords(8,3).forEach(w=>{
       const p=S.p[w.id];if(!p||!p.seen)learn.push({id:w.id,type:'learn'});
-      const pool=shuffle(['card','pick','listen','spell']);
+      const pool=shuffle(['card','pick','listen','spell','typeHe']);
       const cnt=status(w)==='weak'?2:1;
       for(let i=0;i<cnt;i++)rest.push({id:w.id,type:pool[i]});
     });
@@ -344,9 +347,8 @@ function renderItem(){
   if(!it){go('result');return}
   sess.bar.style.width=(sess.i/sess.items.length*100)+'%';
   sess.counter.textContent=(sess.i+1)+'/'+sess.items.length;
-  const w=byId(it.id);
-  const R={learn:rLearn,card:rCard,pick:rPick,listen:rListen,spell:rSpell}[it.type];
-  sess.stage.replaceChildren(R(w));
+  const R={learn:rLearn,card:rCard,pick:rPick,listen:rListen,spell:rSpell,typeHe:rTypeHe}[it.type];
+  sess.stage.replaceChildren(it.type==='snip'?rSnip(allSnips().find(x=>x.id===it.sn)):R(byId(it.id)));
   window.scrollTo(0,0);
 }
 function adv(w,q){
@@ -354,14 +356,14 @@ function adv(w,q){
   if(it.type==='learn'){const p=P(w.id);p.seen++;p.due=p.due||0;save()}
   else{
     record(w.id,q);(sess.res[w.id]=sess.res[w.id]||[]).push(q);
-    if(q===0&&(sess.rq[w.id]||0)<2){sess.rq[w.id]=(sess.rq[w.id]||0)+1;
+    if(q===0&&sess.mode!=='test'&&(sess.rq[w.id]||0)<2){sess.rq[w.id]=(sess.rq[w.id]||0)+1;
       const at=Math.min(sess.items.length,sess.i+3);
-      const t=shuffle(['card','pick','listen','spell'].filter(x=>x!==it.type))[0];
+      const t=shuffle(['card','pick','listen','spell','typeHe'].filter(x=>x!==it.type))[0];
       sess.items.splice(at,0,{id:w.id,type:t});}
   }
   sess.i++;renderItem();
 }
-function feedback(w,q,after){
+function feedback(w,q,after,extra){
   beep(q>0);
   const cls=q===2?'good':q===1?'mid':'bad';
   const msg=q===2?'נכון! 🎉':q===1?'כמעט – עם עזרה. נחזור לזה עוד מעט':'לא נורא. עכשיו נזכור את זה ביחד';
@@ -370,6 +372,7 @@ function feedback(w,q,after){
     h('b',null,msg),
     h('div',{class:'row'},h('span',{class:'e',style:'font-size:2em'},w.emo),h('div',{class:'grow'},h('div',{style:'font-size:1.6em'},enEl(w)),h('div',null,w.he)),speakBtns(w)),
     mnOf(w)||S.my[w.id]?assocBox(w):null,
+    extra||null,
     h('button',{class:'btn primary full',onclick:()=>after()},'המשך'));
 }
 function assocBox(w,editable){
@@ -460,7 +463,7 @@ function optionsQuestion(w,kind){
     if(!ok)[...optBox.children].forEach((b,i)=>{if(choices[i].id===w.id)b.classList.add('ok')});
     [...optBox.children].forEach(b=>b.style.pointerEvents='none');
     const q=ok?(hinted?1:2):0;
-    hintArea.remove();
+    hintArea.remove();skipBtn.remove();
     setTimeout(()=>{fbBox.replaceChildren(feedback(w,q,()=>adv(w,q)));fbBox.scrollIntoView({behavior:'smooth',block:'nearest'})},450);
   }
   choices.forEach(c=>{
@@ -473,14 +476,19 @@ function optionsQuestion(w,kind){
     const wrong=[...optBox.children].map((b,i)=>({b,i})).filter(o=>choices[o.i].id!==w.id);
     if(wrong.length>1)shuffle(wrong)[0].b.classList.add('off');
     hintArea.disabled=true;}},'💡 רמז');
-  return {host,dirEn,optBox,hintBox,hintArea,fbBox};
+  const skipBtn=h('button',{class:'btn ghost full',onclick:()=>{
+    if(answered)return;answered=true;
+    [...optBox.children].forEach((b,i)=>{if(choices[i].id===w.id)b.classList.add('ok');b.style.pointerEvents='none'});
+    hintArea.remove();skipBtn.remove();
+    setTimeout(()=>{fbBox.replaceChildren(feedback(w,0,()=>adv(w,0)));fbBox.scrollIntoView({behavior:'smooth',block:'nearest'})},350);}},'🤷 לא יודע, דלג');
+  return {host,dirEn,optBox,hintBox,hintArea,skipBtn,fbBox};
 }
 function rPick(w){
   const o=optionsQuestion(w,'pick');
   const q=o.dirEn
     ?h('div',{class:'card stack center'},h('div',{class:'muted small'},'מה התרגום?'),h('div',{class:'word-big'},enEl(w)),h('div',{class:'row',style:'justify-content:center'},speakBtns(w)))
     :h('div',{class:'card stack center'},h('div',{class:'muted small'},'איך כותבים באנגלית?'),h('div',{class:'emoji-big'},w.emo),h('h2',null,w.he));
-  o.host.append(q,o.optBox,o.hintBox,o.hintArea,o.fbBox);return o.host;
+  o.host.append(q,o.optBox,o.hintBox,o.hintArea,o.skipBtn,o.fbBox);return o.host;
 }
 function rListen(w){
   const o=optionsQuestion(w,'listen');
@@ -489,7 +497,7 @@ function rListen(w){
     h('div',{class:'row',style:'justify-content:center'},
       h('button',{class:'icon-btn',style:'width:84px;height:84px;font-size:2.2em','aria-label':'השמע',onclick:()=>speak(plain(w.en))},'🔊'),
       h('button',{class:'icon-btn','aria-label':'לאט',onclick:()=>speak(plain(w.en),true)},'🐢'))),
-    o.optBox,o.hintBox,o.hintArea,o.fbBox);
+    o.optBox,o.hintBox,o.hintArea,o.skipBtn,o.fbBox);
   return o.host;
 }
 
@@ -566,6 +574,11 @@ function rSpell(w){
       }}},'בדוק');
     area.append(inp,chk);
   }
+  const skipBtn=h('button',{class:'btn ghost full',onclick:()=>{
+    if(finished)return;finished=true;area.replaceChildren();hintBtn.remove();
+    chars.forEach((c,i)=>{if(slots[i]){slots[i].textContent=c;slots[i].classList.remove('on','f');slots[i].classList.add('h')}});
+    fbBox.replaceChildren(feedback(w,0,()=>adv(w,0)));fbBox.scrollIntoView({behavior:'smooth',block:'nearest'});}},'🤷 לא יודע, דלג');
+  area.append(skipBtn);
   host.append(head,slotRow,area,hintBox,hintBtn,fbBox);
   setTimeout(()=>speak(plain(w.en)),300);
   return host;
@@ -612,7 +625,13 @@ function vResult(){
   let att=0,okc=0;ids.forEach(id=>sess.res[id].forEach(q=>{att++;if(q>0)okc++}));
   const hard=ids.filter(id=>sess.res[id].some(q=>q===0));
   const learnOnly=!ids.length;
+  let testInfo=null;
+  if(sess.mode==='test'&&ids.length){
+    const good=ids.filter(id=>sess.res[id][0]===2).length,tot=ids.length;testInfo=good+' מתוך '+tot;
+    if(!sess.saved){sess.saved=1;S.tests=S.tests||{};const o=S.tests[UNIT.id]||{best:0};S.tests[UNIT.id]={last:good,total:tot,best:Math.max(o.best,good)};save()}
+  }
   app.replaceChildren(h('div',{class:'stack'},
+    testInfo?h('div',{class:'card center'},h('b',null,'ציון מבחן המילים: '+testInfo)):null,
     h('div',{class:'card stack center'},h('div',{class:'emoji-big'},learnOnly?'📘':okc===att?'🏆':'💪'),
       h('h1',null,learnOnly?'סיימת ללמוד':'סיימת!'),
       learnOnly?h('p',{class:'muted'},'עכשיו כדאי לבדוק את עצמך בכרטיסיות או בכתיבה.'):h('p',null,`${okc} מתוך ${att} תשובות נכונות (${Math.round(okc/att*100)}%)`)),
@@ -620,7 +639,8 @@ function vResult(){
       return h('button',{class:'wrow',onclick:()=>openDetail(w)},h('span',{class:'e'},w.emo),h('div',{class:'grow'},enEl(w),h('div',{class:'muted small'},w.he)),h('span',null,last===2?'✅':last===1?'🟡':'❌'))})):null,
     hard.length?h('div',{class:'assoc'},h('span',{class:'lbl'},'🎯 הפוקוס הבא'),`${hard.length} מילים הסתבכו. הן יופיעו יותר בתרגול הבא עד שיהיו קלות.`):null,
     hard.length?h('button',{class:'btn warn full',onclick:()=>startSession('smart',hard)},'תרגל שוב את המילים הקשות'):null,
-    h('button',{class:'btn primary full',onclick:()=>startSession(sess.mode==='match'?'smart':sess.mode)},'עוד סיבוב'),
+    sess.mode==='test'?h('button',{class:'btn warn full',onclick:()=>go('quiz')},'📝 המשך לשאלות על המאמר'):null,
+    h('button',{class:'btn primary full',onclick:()=>sess.mode==='test'?startTest(UNIT.id):startSession(sess.mode==='match'?'smart':sess.mode)},'עוד סיבוב'),
     h('button',{class:'btn full',onclick:()=>go('home')},'חזרה לבית')));
 }
 
@@ -734,8 +754,8 @@ function vSettings(){
 }
 
 /* ===================== course unit: reading + exam practice ===================== */
-const UNIT={
-  id:'shipwrecks',title:'Old Ship Discovery',
+const UNIT1={
+  id:'shipwrecks',title:'Old Ship Discovery',name:'Shipwrecks',
   sections:[
     ['The Discovery','In November 2022, Swedish archaeologists found the remains of an old 17th century ship under the ocean. The name of the ship was Applet, and it was a warship.'],
     ['The History','Workers built the 69-meter long Applet in 1628, but unfortunately, it sank on its first journey near Stockholm after it sailed only 900 meters. The ship is 69 meters long and it is the world’s best-preserved ship from the 17th century.\n\nIn 1625, King Gustav II Adolf of Sweden ordered four new warships to be built, two large and two slightly smaller ones. The two large ships were named Vasa and Applet. But tragic struck and both large ships sunk.'],
@@ -751,23 +771,152 @@ const UNIT={
     {part:'B',t:'mc',q:'____________ the archeologists could not save the ____________ of the ship.',o:['Unfortunately; remains','Discovery; shipwreck','Unfortunately; discovery','Discovery; wreckage'],a:0,words:['unfortunately','remains'],full:'Unfortunately the archeologists could not save the remains of the ship.'},
     {part:'B',t:'mc',q:'The archeologists made sure that the museum ____________ their valuable ____________.',o:['removal; wreckage','preserved; journey','remains; removal','preserved; discovery'],a:3,words:['preserved','discovery'],full:'The archeologists made sure that the museum preserved their valuable discovery.'},
     {part:'B',t:'mc',q:'The Titanic planned to make a long ____________ but ____________ it sank after hitting an iceberg.',o:['journey; unfortunately','discovery; valuable','preserved; wreckage','remains; archeologist'],a:0,words:['journey','unfortunately'],full:'The Titanic planned to make a long journey but unfortunately it sank after hitting an iceberg.'}
-  ]
+  ],
+  sn:[{"en":"In November 2022, Swedish archaeologists found the remains of an old 17th century ship under the ocean. The name of the ship was Applet, and it was a warship.","he":"בנובמבר 2022 ארכאולוגים שוודים מצאו את שרידי ספינה ישנה מהמאה ה-17 מתחת לאוקיינוס. שם הספינה היה אפלט, והיא הייתה ספינת מלחמה.","keys":[{"h":["ארכאולוג","ארכיאולוג"],"w":"archeologist"},{"h":["שרידים","שריד"],"w":"remains"},{"h":["שוודים","שוודי","שוודיה"]},{"h":["ספינה"]},{"h":["אוקיינוס"]},{"h":["מלחמה"]},{"h":["אפלט"]}]},{"en":"Workers built the 69-meter long Applet in 1628, but unfortunately, it sank on its first journey near Stockholm after it sailed only 900 meters.","he":"פועלים בנו את אפלט באורך 69 מטר ב-1628, אבל לרוע המזל היא טבעה במסעה הראשון ליד שטוקהולם אחרי שהפליגה רק 900 מטר.","keys":[{"h":["לרוע המזל","למרבה הצער","לצערי","לצערנו","לצערו","לצערם"],"w":"unfortunately"},{"h":["מסע"],"w":"journey"},{"h":["טבעה","טבע","שקעה","שקע"]},{"h":["שטוקהולם","סטוקהולם"]},{"h":["1628"]},{"h":["900"]},{"h":["69"]}]},{"en":"The ship is 69 meters long and it is the world’s best-preserved ship from the 17th century.","he":"אורך הספינה 69 מטר והיא הספינה המשומרת ביותר בעולם מהמאה ה-17.","keys":[{"h":["משומר","שמור","נשמר","שמורה"],"w":"preserved"},{"h":["69"]},{"h":["עולם"]},{"h":["ספינה"]},{"h":["מאה"]}]},{"en":"When divers found the shipwreck, they hoped that it was Applet because they had been looking for it for a long time. They took pictures and video of the ship but the archaeologists decided to leave the Applet in the sea because removal was too difficult and expensive.","he":"כשצוללנים מצאו את הספינה הטרופה, הם קיוו שזו אפלט כי הם חיפשו אותה זמן רב. הם צילמו תמונות ווידאו של הספינה, אבל הארכאולוגים החליטו להשאיר את אפלט בים כי ההסרה הייתה קשה ויקרה מדי.","keys":[{"h":["ספינה טרופה","טרופה","טרופ"],"w":"shipwreck"},{"h":["הסרה","הוצאה","הרחקה"],"w":"removal"},{"h":["ארכאולוג","ארכיאולוג"],"w":"archeologist"},{"h":["צוללנים","צולל"]},{"h":["יקר"]},{"h":["קשה"]},{"h":["תמונות","צילמו","צילום"]}]},{"en":"The discovery of a shipwreck is always very exciting. There are probably some 3 million shipwrecks in the ocean. Some of these are neither valuable nor historically important.","he":"תגלית של ספינה טרופה היא תמיד מרגשת מאוד. כנראה יש בערך 3 מיליון ספינות טרופות באוקיינוס. חלקן אינן בעלות ערך ואינן חשובות היסטורית.","keys":[{"h":["תגלית","גילוי"],"w":"discovery"},{"h":["ספינה טרופה","ספינות טרופות","טרופה","טרופות","טרופ"],"w":"shipwreck"},{"h":["ערך","יקר"],"w":"valuable"},{"h":["מרגש"]},{"h":["מיליון"]},{"h":["חשוב"]}]},{"en":"The most famous shipwreck is the Titanic, which sunk in the ocean after hitting an iceberg in 1912. Sadly, 1517 people lost their lives during this tragedy.","he":"הספינה הטרופה המפורסמת ביותר היא הטיטאניק, שטבעה באוקיינוס אחרי שפגעה בקרחון ב-1912. למרבה הצער, 1517 אנשים איבדו את חייהם בטרגדיה הזו.","keys":[{"h":["ספינה טרופה","טרופה","טרופ"],"w":"shipwreck"},{"h":["טיטאניק"]},{"h":["קרחון"]},{"h":["1912"]},{"h":["1517"]},{"h":["מפורסם"]},{"h":["טרגדיה"]}]},{"en":"The wreckage was discovered in 1985 and in 1997 a movie was made about the ship, its history and the discovery of the wreckage.","he":"השריד התגלה ב-1985 וב-1997 נעשה סרט על הספינה, על ההיסטוריה שלה ועל גילוי השרידים.","keys":[{"h":["שריד","שרידים","הריסות","חורבן","הרס"],"w":"wreckage"},{"h":["תגלית","גילוי","התגלה","התגלו"],"w":"discovery"},{"h":["1985"]},{"h":["1997"]},{"h":["סרט"]},{"h":["היסטוריה"]}]}]
 };
+const UNITS=[UNIT1];let UNIT=UNIT1;
 function unitWordIds(){return allWords().filter(w=>w.u===UNIT.id).map(w=>w.id)}
+/* ---------- Hebrew answer checking ---------- */
+const nh=s=>(s||'').replace(/[֑-ׇ]/g,'').replace(/[ךםןףץ]/g,c=>({'ך':'כ','ם':'מ','ן':'נ','ף':'פ','ץ':'צ'}[c])).replace(/[^א-ת0-9a-z ]/gi,'').replace(/\s+/g,' ').trim().toLowerCase();
+function lev(a,b){const m=a.length,n=b.length;if(!m)return n;if(!n)return m;let p=[...Array(n+1).keys()];
+  for(let i=1;i<=m;i++){const c=[i];for(let j=1;j<=n;j++)c[j]=Math.min(p[j]+1,c[j-1]+1,p[j-1]+(a[i-1]===b[j-1]?0:1));p=c}return p[n]}
+/* 2 = correct, 1 = partly (one word of a longer translation), 0 = wrong */
+function checkHe(w,ans){
+  const a=nh(ans);if(!a)return 0;
+  const alts=w.he.split(/\s*[,،\/]\s*/).map(nh).filter(Boolean);
+  if(alts.includes(a))return 2;
+  if(alts.some(x=>x.length>=4&&lev(x,a)<=(x.length>=6?2:1)))return 2;
+  if(alts.some(x=>x.split(' ').some(p=>p.length>=3&&p===a)))return 1;
+  return 0;
+}
+
+/* ---------- write the Hebrew meaning of an English word ---------- */
+function rTypeHe(w){
+  const host=h('div',{class:'stack'}),hintBox=h('div'),fbBox=h('div'),area=h('div',{class:'stack'});
+  let hints=0,done=false;
+  const inp=h('input',{class:'input',type:'text',id:'he-in',autocomplete:'off',autocorrect:'off',spellcheck:'false',placeholder:'כתוב את התרגום בעברית',style:'direction:rtl;text-align:center;font-size:1.3em'});
+  function finish(q,typed){
+    done=true;area.replaceChildren();hintBox.replaceChildren();
+    const extra=q===0&&typed?h('button',{class:'btn full',onclick:()=>adv(w,1)},'התשובה שלי נכונה (תרגום אחר)'):null;
+    fbBox.replaceChildren(feedback(w,q,()=>adv(w,q),extra));
+    fbBox.scrollIntoView({behavior:'smooth',block:'nearest'});
+  }
+  function check(){
+    if(done)return;const v=inp.value.trim();if(!v)return;
+    let q=checkHe(w,v);if(q===2&&hints)q=1;finish(q,true);
+  }
+  inp.addEventListener('keydown',e=>{if(e.key==='Enter')check()});
+  const hintBtn=h('button',{class:'btn warn full',onclick:()=>{
+    if(done)return;hints++;
+    if(hints===1)hintBox.replaceChildren(h('div',{class:'assoc'},h('span',{class:'lbl'},'💡 רמז'),mnOf(w)||'הקשב לצליל של המילה'));
+    else{const f=w.he.split(/\s*[,،\/]\s*/)[0];hintBox.replaceChildren(h('div',{class:'assoc'},h('span',{class:'lbl'},'💡 רמז נוסף'),'האות הראשונה: ',h('b',null,f[0]),' · '+f.length+' אותיות'))}
+  }},'💡 רמז');
+  const skipBtn=h('button',{class:'btn ghost full',onclick:()=>{if(!done)finish(0,false)}},'🤷 לא יודע, דלג');
+  area.append(inp,h('button',{class:'btn primary full',onclick:check},'בדוק'),hintBtn,skipBtn);
+  host.append(h('div',{class:'card stack center'},h('div',{class:'muted small'},'מה הפירוש בעברית?'),h('div',{class:'word-big'},enEl(w)),h('div',{class:'row',style:'justify-content:center'},speakBtns(w))),
+    area,hintBox,fbBox);
+  setTimeout(()=>speak(plain(w.en)),300);
+  return host;
+}
+
+/* ---------- reading snippets: listen, then write the meaning in Hebrew ---------- */
+function paraEl(text,unit){
+  const stems=Object.keys(unit.stems||{});
+  const p=h('p',{class:'para'});
+  text.split(/([A-Za-z’']+)/).forEach(tok=>{
+    if(!/^[A-Za-z’']+$/.test(tok)){p.append(tok);return}
+    const low=tok.toLowerCase(),st=stems.find(s=>low.startsWith(s)),wid=st&&unit.stems[st];
+    if(wid&&byId(wid))p.append(h('button',{class:'tk voc',onclick:()=>{speak(tok);openDetail(byId(wid))}},tok));
+    else p.append(h('button',{class:'tk',onclick:()=>speak(tok)},tok));
+  });
+  return p;
+}
+function allSnips(uid){const o=[];UNITS.forEach(u=>{if(uid&&u.id!==uid)return;(u.sn||[]).forEach((s,i)=>o.push(Object.assign({id:u.id+'#'+i,unit:u},s)))});return o}
+function startSnips(uid){
+  const l=shuffle(allSnips(typeof uid==='string'?uid:null)).slice(0,5);if(!l.length){toast('אין קטעים');return}
+  sess={mode:'snips',items:l.map(s=>({type:'snip',sn:s.id})),i:0,res:{},rq:{},att:[]};go('session');
+}
+function rSnip(s){
+  const host=h('div',{class:'stack'}),hintBox=h('div'),fbBox=h('div'),area=h('div',{class:'stack'});
+  let hinted=false,done=false;
+  const ta=h('textarea',{class:'input',id:'sn-in',placeholder:'כתוב בעברית מה כתוב כאן',style:'direction:rtl;text-align:right'});
+  function finish(skipped){
+    if(done)return;done=true;area.replaceChildren();hintBox.replaceChildren();
+    const a=nh(ta.value);
+    const rs=s.keys.map(k=>({k,ok:!skipped&&a&&k.h.some(v=>a.includes(nh(v)))}));
+    const frac=rs.filter(r=>r.ok).length/rs.length,good=!skipped&&frac>=.6;
+    beep(good);
+    rs.forEach(r=>{if(!r.k.w)return;const q=r.ok?(hinted?1:2):0;record(r.k.w,q);(sess.res[r.k.w]=sess.res[r.k.w]||[]).push(q)});
+    fbBox.replaceChildren(h('div',{class:'fb stack pop '+(good?'good':frac>=.3?'mid':'bad')},
+      h('b',null,skipped?'לא נורא. הנה הפירוש:':good?'יפה! תפסת את רוב הרעיונות 🎉':'חלק מהרעיונות חסרים. הנה הפירוש:'),
+      h('div',null,s.he),
+      h('div',{class:'row wrap'},rs.map(r=>h('span',{class:'tag '+(r.ok?'mastered':'weak')},(r.ok?'✓ ':'✗ ')+r.k.h[0]))),
+      h('button',{class:'btn primary full',onclick:()=>{sess.i++;renderItem()}},'המשך')));
+    fbBox.scrollIntoView({behavior:'smooth',block:'nearest'});
+  }
+  const hintBtn=h('button',{class:'btn warn full',onclick:()=>{
+    if(done)return;hinted=true;
+    hintBox.replaceChildren(...s.keys.filter(k=>k.w&&byId(k.w)).map(k=>{const w=byId(k.w);return h('div',{class:'assoc'},h('span',{class:'lbl'},'💡 '+plain(w.en)+' = '+w.he),mnOf(w))}));
+  }},'💡 רמז: תרגום המילים שלמדנו');
+  area.append(ta,h('button',{class:'btn primary full',onclick:()=>{if(ta.value.trim())finish(false)}},'בדוק'),hintBtn,
+    h('button',{class:'btn ghost full',onclick:()=>finish(true)},'🤷 לא יודע, דלג'));
+  host.append(h('div',{class:'card stack'},
+    h('div',{class:'row'},h('div',{class:'muted small grow'},'הקשב וקרא, ואז כתוב את הפירוש בעברית'),
+      h('button',{class:'icon-btn','aria-label':'השמע',onclick:()=>speak(s.en)},'🔊'),h('button',{class:'icon-btn','aria-label':'לאט',onclick:()=>speak(s.en,true)},'🐢')),
+    paraEl(s.en,s.unit)),area,hintBox,fbBox);
+  setTimeout(()=>speak(s.en),300);
+  return host;
+}
+
+/* ---------- review of everything learned, unit test ---------- */
+function startReview(){
+  const seen=allWords().filter(w=>S.p[w.id]&&S.p[w.id].seen);
+  if(!seen.length){toast('עוד לא למדת מילים. התחל מיחידה בקורס');return}
+  const pick=seen.map(w=>({w,s:score(w)})).sort((a,b)=>b.s-a.s).slice(0,14).map(x=>x.w);
+  const types=['pick','typeHe','spell','listen','card'];
+  const items=shuffle(shuffle(pick).map((w,i)=>({id:w.id,type:types[i%types.length]})));
+  sess={mode:'review',items,i:0,res:{},rq:{},att:[]};go('session');
+}
+function startTest(uid){
+  UNIT=UNITS.find(u=>u.id===uid)||UNIT;
+  const ws=shuffle(allWords().filter(w=>w.u===UNIT.id)).slice(0,12);
+  const types=['pick','typeHe','spell','listen'];
+  sess={mode:'test',items:ws.map((w,i)=>({id:w.id,type:types[i%4]})),i:0,res:{},rq:{},att:[]};go('session');
+}
+
+/* ---------- units ---------- */
 function vUnits(){
-  const ids=unitWordIds(),ws=ids.map(byId);const st={new:0,learning:0,weak:0,mastered:0};ws.forEach(w=>st[status(w)]++);
-  const qz=S.quiz&&S.quiz[UNIT.id];
   app.replaceChildren(h('div',{class:'stack'},h('h1',null,'הקורס שלי'),
-    h('div',{class:'card stack'},
-      h('div',null,h('div',{class:'small muted'},'יחידה 1'),h('h2',null,h('span',{class:'en'},'Shipwrecks – '+UNIT.title))),
-      h('p',{class:'small muted'},`${ids.length} מילים · קריאה · שאלות מבחן${qz?` · ציון אחרון ${qz.last}/${qz.total} (שיא ${qz.best})`:''}`),
-      barStats(st,ids.length),
-      h('button',{class:'btn primary full',onclick:()=>go('reader')},'📖 קריאה (Skimming & Scanning)'),
-      h('button',{class:'btn full',onclick:()=>startSession('smart',pickFrom(ids,8))},'🚀 תרגל את מילות היחידה'),
-      h('button',{class:'btn full',onclick:()=>startMatchIds(ids)},'🧩 התאמה: מילות היחידה'),
-      h('button',{class:'btn warn full',onclick:()=>go('quiz')},'📝 תרגול מבחן (שאלות כמו בדף)')),
+    UNITS.map((u,n)=>{
+      const ws=allWords().filter(w=>w.u===u.id),st={new:0,learning:0,weak:0,mastered:0};ws.forEach(w=>st[status(w)]++);
+      const t=S.tests&&S.tests[u.id];
+      return h('button',{class:'card stack',style:'text-align:right;width:100%',onclick:()=>{UNIT=u;go('unit')}},
+        h('div',{class:'small muted'},'יחידה '+(n+1)),h('h2',null,h('span',{class:'en'},u.name||u.title)),
+        h('p',{class:'small muted'},ws.length+' מילים'+(t?' · מבחן אחרון '+t.last+'/'+t.total:' · עוד לא נבחנת')),
+        barStats(st,ws.length));
+    }),
+    h('button',{class:'btn warn full',onclick:()=>startReview()},'🔁 חזרה כללית על כל היחידות'),
     h('p',{class:'small muted center'},'יחידות נוספות יתווספו כשתעלה חומרים חדשים.')));
 }
+function vUnit(){
+  const ids=unitWordIds(),ws=ids.map(byId),st={new:0,learning:0,weak:0,mastered:0};ws.forEach(w=>st[status(w)]++);
+  const t=S.tests&&S.tests[UNIT.id],qz=S.quiz&&S.quiz[UNIT.id],n=UNITS.indexOf(UNIT)+1;
+  const step=(num,txt)=>h('div',{class:'small muted',style:'margin-top:6px'},num+'. '+txt);
+  app.replaceChildren(h('div',{class:'stack'},
+    h('div',{class:'top'},h('button',{class:'icon-btn','aria-label':'חזרה',onclick:()=>go('units')},'→'),h('div',{class:'grow'},h('div',{class:'small muted'},'יחידה '+n),h('h2',{class:'en'},UNIT.name||UNIT.title))),
+    h('div',{class:'card stack'},h('p',{class:'small muted'},ids.length+' מילים'+(t?' · מבחן מילים אחרון '+t.last+'/'+t.total+' (שיא '+t.best+')':'')+(qz?' · שאלות מהדף '+qz.last+'/'+qz.total:'')),barStats(st,ids.length)),
+    step(1,'לומדים'),
+    h('button',{class:'btn primary full',onclick:()=>startSession('learn',ids)},'👀 למד את מילות היחידה'),
+    h('button',{class:'btn full',onclick:()=>go('reader')},'📖 קריאת המאמר'),
+    step(2,'מתרגלים'),
+    h('button',{class:'btn full',onclick:()=>startSession('smart',pickFrom(ids,8))},'🚀 תרגול מילים'),
+    h('button',{class:'btn full',onclick:()=>startMatchIds(ids)},'🧩 התאמה'),
+    (UNIT.sn&&UNIT.sn.length)?h('button',{class:'btn full',onclick:()=>startSnips(UNIT.id)},'🎧 קטעי קריאה: הקשב וכתוב פירוש'):null,
+    step(3,'נבחנים'),
+    h('button',{class:'btn warn full',onclick:()=>startTest(UNIT.id)},'📝 מבחן יחידה: מילים'),
+    h('button',{class:'btn warn full',onclick:()=>go('quiz')},'📝 מבחן יחידה: שאלות על המאמר')));
+}
+
 function pickFrom(ids,n){
   const sc=ids.map(id=>({id,s:score(byId(id))})).sort((a,b)=>b.s-a.s);
   return sc.slice(0,n).map(x=>x.id);
@@ -799,7 +948,7 @@ function vReader(){
       s[1].split('\n\n').map(para)));
   });
   app.replaceChildren(h('div',{class:'stack'},
-    h('div',{class:'top'},h('button',{class:'icon-btn','aria-label':'חזרה',onclick:()=>go('units')},'→'),h('h2',{class:'grow en'},UNIT.title)),
+    h('div',{class:'top'},h('button',{class:'icon-btn','aria-label':'חזרה',onclick:()=>go('unit')},'→'),h('h2',{class:'grow en'},UNIT.title)),
     h('div',{class:'assoc'},h('span',{class:'lbl'},'💡 לפני שקוראים'),
       'Skimming: עבור על הכותרת והכותרות הקטנות ותבין על מה הטקסט. Scanning: חפש רק מספרים, שנים ושמות באות גדולה. מילה מסומנת בצהוב היא מילת אוצר מילים: לחץ עליה לראות תרגום ואסוציאציה. לחיצה על כל מילה אחרת משמיעה אותה.'),
     box,
@@ -810,7 +959,7 @@ let qz=null;
 function vQuiz(){
   qz={i:0,res:[],tries:{}};
   const stage=h('div',{class:'stack'}),bar=h('i',{style:'width:0'}),cnt=h('span',{class:'small muted'});
-  app.replaceChildren(h('div',null,h('div',{class:'top'},h('button',{class:'icon-btn','aria-label':'יציאה',onclick:()=>go('units')},'✕'),h('div',{class:'prog'},bar),cnt),stage));
+  app.replaceChildren(h('div',null,h('div',{class:'top'},h('button',{class:'icon-btn','aria-label':'יציאה',onclick:()=>go('unit')},'✕'),h('div',{class:'prog'},bar),cnt),stage));
   qz.stage=stage;qz.bar=bar;qz.cnt=cnt;quizRender();
 }
 function quizRender(){
@@ -863,7 +1012,7 @@ function quizEnd(){
       h('p',{class:'muted'},good===total?'מושלם! אפשר לנסות שוב כדי לחזק.':'השאלות שטעית בהן מסומנות למטה. המילים שלהן יקבלו יותר פוקוס.')),
     wrong.length?h('div',{class:'card stack'},h('h3',null,'לחזור על'),wrong.map(r=>{const Q=UNIT.qs[r.i];return h('div',{class:'small en',style:'text-align:left'},(Q.full||Q.q))})):null,
     h('button',{class:'btn primary full',onclick:()=>go('quiz')},'עוד סיבוב'),
-    h('button',{class:'btn full',onclick:()=>go('units')},'חזרה לקורס')));
+    h('button',{class:'btn full',onclick:()=>go('unit')},'חזרה לקורס')));
 }
 
 /* ===================== boot ===================== */
