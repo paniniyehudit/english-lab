@@ -245,8 +245,10 @@ function score(w){
   const p=S.p[w.id];if(!p||!p.seen)return 2+Math.random();
   return (1-recent(p))*5+(p.due<=Date.now()?2:-1.5)+(5-p.box)*.3+Math.random();
 }
+let SCOPE=null;
+const scoped=()=>SCOPE?allWords().filter(w=>SCOPE.includes(w.id)):allWords();
 function pickWords(n,maxNew){
-  const sorted=allWords().map(w=>({w,s:score(w)})).sort((a,b)=>b.s-a.s);
+  const sorted=scoped().map(w=>({w,s:score(w)})).sort((a,b)=>b.s-a.s);
   const out=[];let nn=0;
   for(const x of sorted){
     const isNew=!(S.p[x.w.id]&&S.p[x.w.id].seen);
@@ -273,7 +275,7 @@ function buildTabs(){
 }
 function go(v){
   try{speechSynthesis.cancel()}catch(e){}
-  cur=v;window.scrollTo(0,0);
+  cur=v;if(v==='home'||v==='units')SCOPE=null;window.scrollTo(0,0);
   tabbar.style.display=(v==='session'||v==='match'||v==='result'||v==='quiz')?'none':'flex';
   buildTabs();
   ({home:vHome,units:vUnits,unit:vUnit,reader:vReader,quiz:vQuiz,progress:vProgress,words:vWords,settings:vSettings,session:vSession,match:vMatch,result:vResult}[v])();
@@ -314,7 +316,7 @@ function barStats(st,total){
 /* ===================== session engine ===================== */
 function startSession(mode,ids){
   let items=[];
-  if(mode==='snips')return startSnips(ids);
+  if(mode==='snips')return startSnips(ids||(SCOPE&&UNIT.id));
   if(mode==='review')return startReview();
   if(mode==='learn'&&ids){ids.forEach(id=>items.push({id,type:'learn'}))}
   else if(ids){
@@ -877,7 +879,7 @@ function rSnip(s){
 
 /* ---------- review of everything learned, unit test ---------- */
 function startReview(){
-  const seen=allWords().filter(w=>S.p[w.id]&&S.p[w.id].seen);
+  const seen=scoped().filter(w=>S.p[w.id]&&S.p[w.id].seen);
   if(!seen.length){toast('עוד לא למדת מילים. התחל מיחידה בקורס');return}
   const pick=seen.map(w=>({w,s:score(w)})).sort((a,b)=>b.s-a.s).slice(0,14).map(x=>x.w);
   const types=['pick','typeHe','spell','listen','card'];
@@ -916,28 +918,43 @@ function openRef(){
   document.body.append(bg);
 }
 function vUnit(){
-  const ids=unitWordIds(),ws=ids.map(byId),st={new:0,learning:0,weak:0,mastered:0};ws.forEach(w=>st[status(w)]++);
+  const ids=unitWordIds(),ws=ids.map(byId);SCOPE=ids;
+  const st={new:0,learning:0,weak:0,mastered:0};ws.forEach(w=>st[status(w)]++);
   const t=S.tests&&S.tests[UNIT.id],qz=S.quiz&&S.quiz[UNIT.id],n=UNITS.indexOf(UNIT)+1;
-  const step=(num,txt)=>h('div',{class:'small muted',style:'margin-top:6px'},num+'. '+txt);
+  let ok=0,bad=0;ws.forEach(w=>{const p=S.p[w.id];if(p){ok+=p.ok;bad+=p.bad}});
+  const acc=ok+bad?Math.round(ok/(ok+bad)*100):0;
+  const review=ws.filter(w=>{const p=S.p[w.id];return status(w)==='weak'||(p&&p.seen&&p.due<=Date.now())}).sort((a,b)=>score(b)-score(a)).slice(0,10);
+  const hasSn=UNIT.sn&&UNIT.sn.length,hasTxt=UNIT.sections&&UNIT.sections.length,hasQs=UNIT.qs&&UNIT.qs.length;
+  const modes=[['learn','👀','לימוד','תמונה, צליל ואסוציאציה'],['card','🃏','כרטיסיות','הפוך ובדוק, עם רמז'],['listen','👂','האזנה','שומעים ובוחרים'],['spell','✍️','כתיבה','בונים את המילה באנגלית'],['typeHe','🔤','תרגום לעברית','רואים אנגלית, כותבים עברית'],['pick','🎯','בחירה','בוחרים את התרגום'],['match','🧩','התאמה','מחברים זוגות']];
+  if(hasSn)modes.push(['snips','🎧','קטעי קריאה','הקשב וכתוב פירוש']);
+  modes.push(['review','🔁','חזרה כללית','רק מילים שכבר למדת ביחידה']);
+  const listRows=h('div',{style:'display:none'});
+  const listBtn=h('button',{class:'btn full',onclick:()=>{const open=listRows.style.display==='none';listRows.style.display=open?'block':'none';listBtn.textContent=open?'הסתר את רשימת המילים':'הצג את כל מילות היחידה'}},'הצג את כל מילות היחידה');
+  ws.forEach(w=>{const p=S.p[w.id],r=p?recent(p):null;
+    listRows.append(h('button',{class:'wrow',onclick:()=>openDetail(w)},h('span',{class:'e'},w.emo),h('div',{class:'grow'},enEl(w),h('div',{class:'muted small'},w.he)),
+      h('div',{class:'stack',style:'gap:2px;align-items:flex-end'},h('span',{class:'tag '+status(w)},STAT_HE[status(w)]),p&&p.seen?h('span',{class:'small muted'},Math.round((r||0)*100)+'%'):null)))});
   app.replaceChildren(h('div',{class:'stack'},
     h('div',{class:'top'},h('button',{class:'icon-btn','aria-label':'חזרה',onclick:()=>go('units')},'→'),h('div',{class:'grow'},h('div',{class:'small muted'},'יחידה '+n),h('h2',{class:'en'},UNIT.name||UNIT.title))),
-    h('div',{class:'card stack'},h('p',{class:'small muted'},ids.length+' מילים'+(t?' · מבחן מילים אחרון '+t.last+'/'+t.total+' (שיא '+t.best+')':'')+(qz?' · שאלות מהדף '+qz.last+'/'+qz.total:'')),barStats(st,ids.length)),
-    step(1,'לומדים'),
-    h('button',{class:'btn primary full',onclick:()=>startSession('learn',ids)},'👀 למד את מילות היחידה'),
-    (UNIT.sections&&UNIT.sections.length)?h('button',{class:'btn full',onclick:()=>go('reader')},'📖 קריאת המאמר'):h('p',{class:'small muted'},'המאמר והשאלות של היחידה יתווספו כשתעלה אותם.'),
-    UNIT.ref?h('button',{class:'btn full',onclick:openRef},'📘 '+UNIT.ref.title):null,
-    step(2,'מתרגלים'),
-    h('button',{class:'btn full',onclick:()=>startSession('smart',pickFrom(ids,8))},'🚀 תרגול מילים'),
-    h('button',{class:'btn full',onclick:()=>startMatchIds(ids)},'🧩 התאמה'),
-    (UNIT.sn&&UNIT.sn.length)?h('button',{class:'btn full',onclick:()=>startSnips(UNIT.id)},'🎧 קטעי קריאה: הקשב וכתוב פירוש'):null,
-    step(3,'נבחנים'),
-    h('button',{class:'btn warn full',onclick:()=>startTest(UNIT.id)},'📝 מבחן יחידה: מילים'),
-    (UNIT.qs&&UNIT.qs.length)?h('button',{class:'btn warn full',onclick:()=>go('quiz')},'📝 מבחן יחידה: שאלות על המאמר'):null,
-    unitExtraIds().length?[h('hr'),h('div',{class:'small muted'},'תרגול משלים: מילים שחוזרות הרבה בטקסט ולא היו ברשימת היחידה ('+unitExtraIds().length+')'),
+    h('div',{class:'card stack'},
+      h('div',{class:'row wrap small muted'},h('span',null,ids.length+' מילים'),h('span',null,'· הצלחה כללית '+acc+'%'),t?h('span',null,'· מבחן מילים '+t.last+'/'+t.total+' (שיא '+t.best+')'):null,qz?h('span',null,'· שאלות מהמאמר '+qz.last+'/'+qz.total):null),
+      barStats(st,ids.length)),
+    h('button',{class:'hero',onclick:()=>startSession('smart')},h('span',{style:'font-size:2.2em'},'🚀'),
+      h('div',{class:'grow'},h('b',null,'אימון חכם'),h('span',{class:'small'},st.weak?st.weak+' מילים צריכות חיזוק – יופיעו יותר':'ממשיכים בקצב שלך'))),
+    h('div',{class:'grid2'},modes.map(m=>h('button',{class:'mode',style:m[0]==='review'?'grid-column:1/-1;background:var(--accent-soft)':null,onclick:()=>m[0]==='match'?startMatchIds(ids):m[0]==='snips'?startSnips(UNIT.id):startSession(m[0])},h('span',{class:'ic'},m[1]),h('b',null,m[2]),h('span',null,m[3])))),
+    h('div',{class:'card stack'},h('h3',null,'מילים לחזרה'),
+      review.length?h('div',{class:'row wrap'},review.map(w=>h('button',{class:'chip',onclick:()=>openDetail(w)},w.emo,' ',enEl(w)))):h('p',{class:'small muted'},'עדיין אין מילים לחזרה. אחרי שתתרגל, המילים שמסתבכות או שהגיע הזמן לחזור עליהן יופיעו כאן.'),
+      review.length?h('button',{class:'btn warn full',onclick:()=>startSession('smart',review.map(w=>w.id))},'תרגל את מילות החזרה'):null),
+    h('div',{class:'card stack'},h('h3',null,'מבחן ושאלות'),
+      h('button',{class:'btn warn full',onclick:()=>startTest(UNIT.id)},'📝 מבחן יחידה: מילים'),
+      hasQs?h('button',{class:'btn warn full',onclick:()=>go('quiz')},'📝 מבחן יחידה: שאלות על המאמר'):null),
+    (hasTxt||UNIT.ref)?h('div',{class:'card stack'},h('h3',null,'חומרי היחידה'),
+      hasTxt?h('button',{class:'btn full',onclick:()=>go('reader')},'📖 קריאת המאמר'):null,
+      UNIT.ref?h('button',{class:'btn full',onclick:openRef},'📘 '+UNIT.ref.title):null):null,
+    unitExtraIds().length?h('div',{class:'card stack'},h('h3',null,'תרגול משלים'),h('p',{class:'small muted'},'מילים שחוזרות הרבה בטקסט ולא היו ברשימת היחידה ('+unitExtraIds().length+')'),
       h('button',{class:'btn full',onclick:()=>startSession('learn',unitExtraIds())},'👀 למד את המילים הנוספות'),
-      h('button',{class:'btn full',onclick:()=>startSession('smart',pickFrom(unitExtraIds(),8))},'🚀 תרגל את המילים הנוספות')]:null));
+      h('button',{class:'btn full',onclick:()=>startSession('smart',pickFrom(unitExtraIds(),8))},'🚀 תרגל את המילים הנוספות')):null,
+    listBtn,listRows));
 }
-
 function pickFrom(ids,n){
   const sc=ids.map(id=>({id,s:score(byId(id))})).sort((a,b)=>b.s-a.s);
   return sc.slice(0,n).map(x=>x.id);
